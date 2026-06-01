@@ -547,3 +547,135 @@ docker service create --name frontend --network my-overlay frontend-image
 ## ECS Service
 
 - ECS SERVICE allows you to run your container instances as defined in your task definition. It also allows you to run and maintain a specified number of instances by configuring the auto-scaling policies. If any of your tasks fail or stop for any reason, the Amazon ECS service scheduler launches another instance of your task definition to replace it and maintain the desired count of tasks. You can optionally run your service behind a load balancer, The load balancer distributes traffic across the tasks that are associated with the service
+
+## Docker Volumes
+
+- Basically the data inside the container is not persistent
+- because the docker works on layer format. the images was build by layer by layer model.
+- when we run a new container then there will be a new writable layer created and wvery thing that we modified will be on that layer..
+- when we destroyed or restart the container then the writable layer will be deleted so the data stored on the writable layer will be deleted..
+
+- when we create a file inside the container then:
+- container creates file → stored in writable layer
+- container deleted → writable layer deleted
+- file gone
+
+- Where Volumes are stored : /var/lib/docker/volumes/
+- Each volume has its own directory:
+
+- /var/lib/docker/volumes/my-volume/\_data
+
+👉 This is where your actual data lives.
+
+- Types of Volumes
+  1. Named Volumes: Like `docker volume create myvol`
+  - Docker Manages them
+  - Easy to use
+  - Best for production
+  2. Anonymous Volumes: like `docker run -v /app nginx`
+  - Docker randomly creates them. Hard to track
+
+- Volume Demo
+  1. `docker volume create demo-volume`
+  2. `docker run -it --name vol-test -v demo-volume:/data ubuntu bash`
+  3. create file and add some content.
+  4. delete the container
+  5. use the volume for new container
+  6. we can see the old file that we created
+
+- Binding Mounts
+  - Similar to Volumes but we bind the host machine folder
+  - Like `docker run -it -v $(pwd):/data ubuntu bash`
+  - So all the changes are insync b/w host and the container
+  - Read Only Mode
+  - docker run -v $(pwd):/app:ro nginx
+
+    👉 :ro = read-only
+
+- Volume Backup's
+  - ```docker run --rm \
+      -v my-volume:/data \
+      -v $(pwd):/backup \
+      ubuntu tar czf /backup/backup.tar.gz /data
+    ```
+
+- Restore Volume
+  - ```docker run --rm \
+    -v my-volume:/data \
+    -v $(pwd):/backup \
+    ubuntu tar xzf /backup/backup.tar.gz -C /
+    ```
+
+- Volume Migration
+  - Convert the data into tar
+  - And copy the tar file to new server
+  - And restore it same as above by binding the host machine folder to container
+
+- Volume Driver
+  - Driver is like a plugin that helps docker to store data in remote server
+  - We have local driver by default that stores data within the host or container
+  - We have NFS, EFS that heps to have shared Storage system...
+  - Works across multiple host.
+  - ```
+      docker volume create \
+    --driver local \
+    --opt type=nfs \
+    --opt o=addr=192.168.1.10,rw \
+    --opt device=:/data \
+    nfs-volume
+    ```
+
+## Docker N/W
+
+- Flow
+
+👉 Container starts
+↓
+Network namespace created
+↓
+veth pair created (Virtual cable)
+↓
+One end → container (eth0)
+Other end → attached to docker0 bridge
+↓
+IP assigned
+
+- here the docker0 manages the communication b/w the containers. it is like a router , that knows where the packets has to be sent...
+
+- Q3: How does container get internet?
+
+👉 Through NAT via host
+
+- Connecting n/w to existig container
+- docker network connect my-network container-name
+- use disconnect to disconnect
+
+- To see routing IP tables : `sudo iptables -t nat -L -n`
+
+### Overlay N/w
+
+- How Overlay Works (Core Concept 🔥)
+
+Overlay uses:
+
+👉 VXLAN (Virtual Extensible LAN)
+
+🧠 What VXLAN Does
+
+It wraps your packet like this:
+
+Original Packet:
+Container A → Container B
+
+Encapsulated:
+[Outer IP (Host1 → Host2)]
+[Inner Packet (Container A → Container B)]
+
+☀️ Step-by-Step Packet Flow (VERY IMPORTANT)
+
+1. Container A sends packet to Container B
+2. Docker encapsulates packet (VXLAN)
+3. Packet travels via host network
+4. Host 2 receives packet
+5. Docker decapsulatesm
+6. Delivered to Container B
